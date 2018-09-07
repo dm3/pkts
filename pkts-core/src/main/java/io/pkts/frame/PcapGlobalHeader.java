@@ -7,6 +7,7 @@ import io.pkts.protocol.Protocol;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 
 /**
  * 
@@ -42,7 +43,7 @@ public final class PcapGlobalHeader {
      * saved in nanosecond resolution instead of microseconds.
      */
     public static final byte[] MAGIC_NSEC = { (byte) 0xa1, (byte) 0xb2, (byte) 0x3c, (byte) 0x4d };
-    public static final byte[] MAGIC_NSEC_SWAPPED = { (byte) 0x4d, (byte) 0x3c, (byte) 0xb2, (byte) 0xa2 };
+    public static final byte[] MAGIC_NSEC_SWAPPED = { (byte) 0x4d, (byte) 0x3c, (byte) 0xb2, (byte) 0xa1 };
 
     /**
      * Found the following at:
@@ -192,18 +193,41 @@ public final class PcapGlobalHeader {
 
     }
 
+    private static void swapMagic(byte[] header) {
+        byte tmp = header[0];
+        header[0] = header[3];
+        header[3] = tmp;
+        tmp = header[1];
+        header[1] = header[2];
+        header[2] = tmp;
+    }
+
+    private static boolean isNsecTcpDumpMagic(byte[] header) {
+        return Arrays.equals(header, MAGIC_NSEC);
+    }
+
+    private static boolean isKuznetsovTcpDumpMagic(byte[] header) {
+        return Arrays.equals(header, MAGIC_MODIFIED);
+    }
+
+    private static boolean isTcpDumpMagic(byte[] header) {
+        return Arrays.equals(header, MAGIC_BIG_ENDIAN);
+    }
+
     public static final PcapGlobalHeader parse(final Buffer in) throws IOException {
         final Buffer h = in.readBytes(4);
         final byte[] header = h.getArray();
 
         ByteOrder byteOrder = null;
-        if (header[0] == MAGIC_BIG_ENDIAN[0] && header[1] == MAGIC_BIG_ENDIAN[1]
-                && header[2] == MAGIC_BIG_ENDIAN[2] && header[3] == MAGIC_BIG_ENDIAN[3]) {
+        if (isTcpDumpMagic(header) || isKuznetsovTcpDumpMagic(header) || isNsecTcpDumpMagic(header)) {
             byteOrder = ByteOrder.BIG_ENDIAN;
-        } else if (header[0] == MAGIC_LITTLE_ENDIAN[0] && header[1] == MAGIC_LITTLE_ENDIAN[1]
-                && header[2] == MAGIC_LITTLE_ENDIAN[2] && header[3] == MAGIC_LITTLE_ENDIAN[3]) {
+        }
+        swapMagic(header);
+        if (isTcpDumpMagic(header) || isKuznetsovTcpDumpMagic(header) || isNsecTcpDumpMagic(header)) {
             byteOrder = ByteOrder.LITTLE_ENDIAN;
-        } else {
+        }
+
+        if (byteOrder == null) {
             throw new IllegalArgumentException("Unknown header type");
         }
 
